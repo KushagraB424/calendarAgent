@@ -12,7 +12,7 @@ async function callUnifiedLLM(apiKey, systemPrompt, userPrompt) {
   // Detect provider
   if (apiKey.startsWith("sk-ant-")) {
     return callAnthropic(apiKey, systemPrompt, userPrompt);
-  } else if (apiKey.startsWith("AIza")) {
+  } else if (apiKey.startsWith("AIza") || apiKey.startsWith("AQ.")) {
     return callGemini(apiKey, systemPrompt, userPrompt);
   } else if (apiKey.startsWith("gsk_")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile");
