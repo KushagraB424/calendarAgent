@@ -16,6 +16,8 @@ async function callUnifiedLLM(apiKey, systemPrompt, userPrompt, images = []) {
     return callGemini(apiKey, systemPrompt, userPrompt, images);
   } else if (apiKey.startsWith("gsk_")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", images);
+  } else if (apiKey.startsWith("sk-or-v1-")) {
+    return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://openrouter.ai/api/v1/chat/completions", "nvidia/nemotron-nano-12b-v2-vl:free", images);
   } else if (apiKey.startsWith("sk-") || apiKey.startsWith("sk-proj-")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", images);
   } else {
@@ -75,21 +77,24 @@ async function callOpenAICompatible(apiKey, systemPrompt, userPrompt, baseUrl, m
     },
     body: JSON.stringify({
       model: model,
-      response_format: { type: "json_object" },
+      max_tokens: 2048,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: typeof content[0] === 'object' ? content : userPrompt },
+        { role: "user", content: typeof content[0] === "object" ? content : userPrompt },
       ],
     }),
   });
 
   const data = await response.json();
-  if (!response.ok) throw new Error(`OpenAI-compatible error: ${data.error?.message || response.statusText}`);
+  if (!response.ok || data.error) throw new Error(`OpenAI-compatible error: ${data.error?.message || data.error || response.statusText}`);
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error(`OpenAI-compatible error: Invalid response format: ${JSON.stringify(data)}`);
+  }
   return data.choices[0].message.content;
 }
 
 async function callGemini(apiKey, systemPrompt, userPrompt, images = []) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   
   const parts = [{ text: userPrompt }];
   for (const img of images) {
@@ -124,10 +129,13 @@ async function callGemini(apiKey, systemPrompt, userPrompt, images = []) {
 function parseLLMJson(rawText) {
   let cleaned = rawText.trim();
   // Strip markdown code blocks if present
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(json)?\n?/i, '');
-    cleaned = cleaned.replace(/\n?```$/i, '');
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(json)?\n?/i, "");
+    cleaned = cleaned.replace(/\n?```$/i, "");
   }
+  
+  // Remove trailing commas before closing braces/brackets to prevent JSON parse errors
+  cleaned = cleaned.replace(/,\s*([\]}])/g, '$1');
   
   const parsed = JSON.parse(cleaned);
   // Ensure we return the holidays array directly
