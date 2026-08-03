@@ -47,7 +47,7 @@ async function callAnthropic(apiKey, systemPrompt, userPrompt, images = []) {
     },
     body: JSON.stringify({
       model: "claude-3-5-sonnet-20241022",
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content }],
     }),
@@ -77,7 +77,7 @@ async function callOpenAICompatible(apiKey, systemPrompt, userPrompt, baseUrl, m
     },
     body: JSON.stringify({
       model: model,
-      max_tokens: 2048,
+      max_tokens: 4096,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: typeof content[0] === "object" ? content : userPrompt },
@@ -128,11 +128,16 @@ async function callGemini(apiKey, systemPrompt, userPrompt, images = []) {
  */
 function parseLLMJson(rawText) {
   let cleaned = rawText.trim();
-  // Strip markdown code blocks if present
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```(json)?\n?/i, "");
-    cleaned = cleaned.replace(/\n?```$/i, "");
+  
+  // Extract JSON block in case LLM added conversational text
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (jsonMatch) {
+    cleaned = jsonMatch[0];
   }
+  
+  // Strip markdown code blocks if present
+  cleaned = cleaned.replace(/^```(json)?\n?/i, "");
+  cleaned = cleaned.replace(/\n?```$/i, "");
   
   // Remove trailing commas before closing braces/brackets to prevent JSON parse errors
   cleaned = cleaned.replace(/,\s*([\]}])/g, '$1');

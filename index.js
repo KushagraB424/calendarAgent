@@ -55,8 +55,20 @@ app.post('/extract-holidays', async (req, res) => {
 
 app.post('/generate-yearly-plan', async (req, res) => {
   try {
-    const { year, city, state } = req.body;
+    const { year, city, state, schoolCalendarUrl } = req.body;
     if (!year || !city) return res.status(400).json({ error: 'Year and city are required' });
+
+    let scrapedContext = "";
+    if (schoolCalendarUrl) {
+      try {
+        const scraperResult = await scrapeTextFromUrl(schoolCalendarUrl);
+        if (scraperResult && scraperResult.text) {
+          scrapedContext = `\n\nAdditionally, here is the scraped content of the local school district's calendar. Use this content to precisely schedule specific holidays, breaks, and PA days as overrides.\n\nScraped Calendar Content:\n${scraperResult.text}`;
+        }
+      } catch (scrapeErr) {
+        console.warn(`Failed to scrape schoolCalendarUrl: ${scrapeErr.message}`);
+      }
+    }
 
     const systemPrompt = `You are an expert marketing planner for a trampoline park. Output ONLY a JSON object representing a yearly marketing plan. The JSON must match this structure exactly, with no markdown or extra text:
 {
@@ -75,12 +87,13 @@ app.post('/generate-yearly-plan', async (req, res) => {
 }`;
     const userPrompt = `Generate a full marketing plan for the year ${year} for a trampoline park located in ${city}, ${state || 'Canada'}.
 Include major holidays (e.g., Thanksgiving, Christmas Break, Spring Break), likely student PA Days, and short-term seasonal promotional offers or events. 
+If no school district calendar content is provided below, or if the provided content is insufficient, strictly rely on your pretrained knowledge of school holidays and PA days for this specific region/city.
 CRITICAL: Ensure that all dates are historically and factually accurate (e.g. Valentine's Day is in February).
 Put all general, long-running programs or overarching themes (like 2-month Summer Camps or year-long initiatives) into the 'rules' array.
 Put ONLY short-term, specific events (e.g. Launch weekends, 3-day promos, 1-day holidays) into the 'overrides' array with proper startDate and endDate.
 DO NOT make any override event longer than 14 days. 
 Set the plan startDate to ${year}-01-01 and endDate to ${year}-12-31.
-Return ONLY the raw JSON.`;
+Return ONLY the raw JSON.${scrapedContext}`;
 
     let planData = null;
     try {
