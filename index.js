@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { scrapeTextFromUrl } = require('./utils/webScraper');
 const { callUnifiedLLM, parseLLMJson } = require('./utils/llmWrapper');
+const { validatePlan } = require('./utils/planValidator');
 
 const app = express();
 const PORT = process.env.PORT || 5005;
@@ -96,16 +97,34 @@ Set the plan startDate to ${year}-01-01 and endDate to ${year}-12-31.
 Return ONLY the raw JSON.${scrapedContext}`;
 
     let planData = null;
+
+    const attemptGeneration = async (apiKey, currentPrompt) => {
+      const rawLLMOutput = await callUnifiedLLM(apiKey, systemPrompt, currentPrompt, []);
+      const parsed = parseLLMJson(rawLLMOutput);
+      validatePlan(parsed, year);
+      return parsed;
+    };
+
     try {
-      const rawLLMOutput = await callUnifiedLLM(process.env.LLM_API_KEY, systemPrompt, userPrompt, []);
-      planData = parseLLMJson(rawLLMOutput);
-    } catch (llmError) {
-      console.warn(`Primary LLM failed: ${llmError.message}. Trying LLM_API_KEY2 fallback...`);
+      try {
+        planData = await attemptGeneration(process.env.LLM_API_KEY, userPrompt);
+      } catch (err) {
+        console.warn(`Primary LLM attempt failed validation: ${err.message}. Retrying with feedback...`);
+        const correctionPrompt = `${userPrompt}\n\nCRITICAL: Your previous response failed validation with the following error: "${err.message}". Fix this in your new response. Ensure you output ONLY a valid JSON object matching the exact structure.`;
+        planData = await attemptGeneration(process.env.LLM_API_KEY, correctionPrompt);
+      }
+    } catch (primaryErr) {
+      console.warn(`Primary LLM failed after retries: ${primaryErr.message}. Trying LLM_API_KEY2 fallback...`);
       if (process.env.LLM_API_KEY2) {
-        const fallbackOutput = await callUnifiedLLM(process.env.LLM_API_KEY2, systemPrompt, userPrompt, []);
-        planData = parseLLMJson(fallbackOutput);
+        try {
+          planData = await attemptGeneration(process.env.LLM_API_KEY2, userPrompt);
+        } catch (fallbackErr) {
+          console.warn(`Fallback LLM attempt failed validation: ${fallbackErr.message}. Retrying with feedback...`);
+          const correctionPrompt = `${userPrompt}\n\nCRITICAL: Your previous response failed validation with the following error: "${fallbackErr.message}". Fix this in your new response. Ensure you output ONLY a valid JSON object matching the exact structure.`;
+          planData = await attemptGeneration(process.env.LLM_API_KEY2, correctionPrompt);
+        }
       } else {
-        throw llmError;
+        throw primaryErr;
       }
     }
 
