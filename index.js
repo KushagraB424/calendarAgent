@@ -25,7 +25,7 @@ app.post('/extract-holidays', async (req, res) => {
     const images = scraperResult.images || [];
 
     // Use universal LLM Wrapper
-    const systemPrompt = "You are a helpful assistant that extracts holiday dates from school calendar text or images. Output ONLY a JSON object containing an array of objects under the key 'holidays'. Each object must have 'date' (YYYY-MM-DD) and 'name' (string). Do not include any other text or markdown formatting.";
+    const systemPrompt = "You are a helpful assistant that extracts holiday dates from school calendar text or images. Output ONLY a JSON object containing an array of objects under the key 'holidays'. Each object must have 'date' (YYYY-MM-DD), 'name' (string), and 'sourceUrl' (string) indicating where it was found based on the provided text. Do not include any other text or markdown formatting.";
     const userPrompt = `Extract all holidays from this content:\n\n${rawText}`;
 
     let holidays = [];
