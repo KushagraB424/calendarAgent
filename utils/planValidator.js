@@ -48,6 +48,9 @@ const validatePlan = (planData, requestedYear) => {
     if (!allowedRuleTypes.includes(rule.type)) {
       throw new Error(`Invalid rule type: ${rule.type}`);
     }
+    if (typeof rule.confidenceScore !== 'number' || !['auto-apply', 'requires-review', 'discard'].includes(rule.recommendedAction)) {
+      throw new Error(`Rule ${rule.title} missing or invalid confidenceScore or recommendedAction`);
+    }
   }
 
   const allowedOverrideTypes = [
@@ -61,8 +64,12 @@ const validatePlan = (planData, requestedYear) => {
 
   for (let i = 0; i < overrides.length; i++) {
     const override = overrides[i];
-    if (!override.title || !override.type || !override.startDate || !override.endDate) {
-      throw new Error(`Override at index ${i} missing required fields (title, type, startDate, endDate).`);
+    if (!override.title || !override.type || !override.startDate || !override.endDate || typeof override.sourceEvidence !== 'string' || override.sourceEvidence.trim() === '') {
+      throw new Error(`Override at index ${i} missing required fields (title, type, startDate, endDate, sourceEvidence).`);
+    }
+
+    if (typeof override.confidenceScore !== 'number' || !['auto-apply', 'requires-review', 'discard'].includes(override.recommendedAction)) {
+      throw new Error(`Override ${override.title} missing or invalid confidenceScore or recommendedAction`);
     }
 
     if (!allowedOverrideTypes.includes(override.type)) {
@@ -120,6 +127,9 @@ const validatePlan = (planData, requestedYear) => {
 
   // Factual holiday accuracy (basic static checks)
   const staticHolidays = [
+    ["christmas break", null],
+    ["pre-christmas", null],
+    ["post-christmas", null],
     ["christmas eve", "-12-24"],
     ["christmas", "-12-25"],
     ["halloween", "-10-31"],
