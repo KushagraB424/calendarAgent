@@ -163,6 +163,24 @@ Return ONLY the raw JSON.${scrapedContext}`;
   }
 });
 
+const { detectConflicts } = require('./utils/conflictResolver');
+
+app.post('/check-conflicts', (req, res) => {
+  try {
+    const { newEvent, existingEvents } = req.body;
+    
+    if (!newEvent || !existingEvents || !Array.isArray(existingEvents)) {
+      return res.status(400).json({ error: 'newEvent object and existingEvents array are required' });
+    }
+
+    const conflictResult = detectConflicts(newEvent, existingEvents);
+    res.json({ data: conflictResult });
+  } catch (error) {
+    console.error("[POST /check-conflicts] Error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`calendarAgent microservice listening on port ${PORT}`);
 });
