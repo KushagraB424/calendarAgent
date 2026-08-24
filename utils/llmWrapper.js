@@ -17,7 +17,7 @@ async function callUnifiedLLM(apiKey, systemPrompt, userPrompt, images = []) {
   } else if (apiKey.startsWith("gsk_")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", images);
   } else if (apiKey.startsWith("sk-or-v1-")) {
-    return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://openrouter.ai/api/v1/chat/completions", "nvidia/nemotron-nano-12b-v2-vl:free", images);
+    return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://openrouter.ai/api/v1/chat/completions", "nvidia/llama-3.1-nemotron-70b-instruct:free", images);
   } else if (apiKey.startsWith("sk-") || apiKey.startsWith("sk-proj-")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", images);
   } else {
