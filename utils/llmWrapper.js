@@ -17,7 +17,7 @@ async function callUnifiedLLM(apiKey, systemPrompt, userPrompt, images = []) {
   } else if (apiKey.startsWith("gsk_")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", images);
   } else if (apiKey.startsWith("sk-or-v1-")) {
-    return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://openrouter.ai/api/v1/chat/completions", "nvidia/llama-3.1-nemotron-70b-instruct:free", images);
+    return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://openrouter.ai/api/v1/chat/completions", "google/gemini-2.0-flash-exp:free", images);
   } else if (apiKey.startsWith("sk-") || apiKey.startsWith("sk-proj-")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", images);
   } else {
@@ -94,33 +94,48 @@ async function callOpenAICompatible(apiKey, systemPrompt, userPrompt, baseUrl, m
 }
 
 async function callGemini(apiKey, systemPrompt, userPrompt, images = []) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  
-  const parts = [{ text: userPrompt }];
-  for (const img of images) {
-    parts.push({
-      inlineData: {
-        mimeType: img.mimeType,
-        data: img.data
+  const modelsToTry = [
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-2.0-flash-exp"
+  ];
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const parts = [{ text: userPrompt }];
+      for (const img of images) {
+        parts.push({
+          inlineData: {
+            mimeType: img.mimeType,
+            data: img.data,
+          },
+        });
       }
-    });
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ parts }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(`Gemini error (${model}): ${data.error?.message || response.statusText}`);
+      return data.candidates[0].content.parts[0].text;
+    } catch (err) {
+      lastError = err;
+      console.warn(`Gemini model ${model} failed: ${err.message}. Trying next model...`);
+    }
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts }],
-      generationConfig: { responseMimeType: "application/json" },
-    }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(`Gemini error: ${data.error?.message || response.statusText}`);
-  return data.candidates[0].content.parts[0].text;
+  throw lastError;
 }
 
 /**

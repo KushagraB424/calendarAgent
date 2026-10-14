@@ -1,3 +1,8 @@
+const {
+  validateEventMarketabilityAndCanadaRules,
+  DISALLOWED_ADMINISTRATIVE_KEYWORDS,
+} = require('./canadianCalendarHelper');
+
 const isValidDate = (dateString) => {
   const regex = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateString.match(regex)) return false;
@@ -14,7 +19,7 @@ const getDaysDifference = (start, end) => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
-const validatePlan = (planData, requestedYear) => {
+const validatePlan = (planData, requestedYear, parkDetails = {}) => {
   if (!planData) throw new Error("Plan data is empty");
   
   const plan = planData.plan || planData;
@@ -41,6 +46,11 @@ const validatePlan = (planData, requestedYear) => {
     throw new Error("Plan must contain at least one rule or override (empty plan).");
   }
 
+  const country = (parkDetails.country || '').toLowerCase();
+  const state = (parkDetails.state || '').toLowerCase();
+  const isCanadianLocation = country.includes('canada') || country === 'ca' || 
+    ['ontario', 'on', 'quebec', 'qc', 'alberta', 'ab', 'british columbia', 'bc', 'manitoba', 'mb', 'saskatchewan', 'sk', 'nova scotia', 'ns'].includes(state);
+
   const allowedRuleTypes = ['planning_campaign'];
   if (!Array.isArray(plan.rules)) throw new Error("rules must be an array");
   for (const rule of plan.rules) {
@@ -50,6 +60,13 @@ const validatePlan = (planData, requestedYear) => {
     }
     if (typeof rule.confidenceScore !== 'number' || !['auto-apply', 'requires-review', 'discard'].includes(rule.recommendedAction)) {
       throw new Error(`Rule ${rule.title} missing or invalid confidenceScore or recommendedAction`);
+    }
+
+    // Check prohibited administrative items in rules
+    for (const item of DISALLOWED_ADMINISTRATIVE_KEYWORDS) {
+      if (item.pattern.test(rule.title) || (rule.description && item.pattern.test(rule.description))) {
+        throw new Error(`Non-marketable school administrative theme detected in rule: "${rule.title}". Reason: ${item.reason}`);
+      }
     }
   }
 
@@ -93,6 +110,9 @@ const validatePlan = (planData, requestedYear) => {
       throw new Error(`Override ${override.title} exceeds maximum 14-day duration.`);
     }
 
+    // Validate Canadian holiday accuracy and trampoline park marketability
+    validateEventMarketabilityAndCanadaRules(override, requestedYear, isCanadianLocation);
+
     // Duplicate event check
     const key = `${override.title}-${override.startDate}-${override.endDate}`;
     if (overrideKeys.has(key)) {
@@ -115,17 +135,23 @@ const validatePlan = (planData, requestedYear) => {
         
         const isClosed1 = o1.type === 'planning_closed';
         const isClosed2 = o2.type === 'planning_closed';
-        const isOpen1 = ['planning_event', 'planning_offer'].includes(o1.type);
-        const isOpen2 = ['planning_event', 'planning_offer'].includes(o2.type);
+        const isOpen1 = ['planning_event', 'planning_offer', 'planning_holiday'].includes(o1.type);
+        const isOpen2 = ['planning_event', 'planning_offer', 'planning_holiday'].includes(o2.type);
         
-        if ((isClosed1 && isOpen2) || (isClosed2 && isOpen1)) {
+        // Single-day closures (e.g. Christmas Day) within multi-day promotions are valid specific overrides
+        const dur1 = getDaysDifference(o1.startDate, o1.endDate);
+        const dur2 = getDaysDifference(o2.startDate, o2.endDate);
+        const isSingleDayClosed1 = isClosed1 && dur1 <= 1;
+        const isSingleDayClosed2 = isClosed2 && dur2 <= 1;
+
+        if (((isClosed1 && isOpen2) || (isClosed2 && isOpen1)) && !isSingleDayClosed1 && !isSingleDayClosed2) {
           throw new Error(`Conflicting closed/open instructions: ${o1.title} and ${o2.title} overlap.`);
         }
       }
     }
   }
 
-  // Factual holiday accuracy (basic static checks)
+  // Factual general holiday accuracy
   const staticHolidays = [
     ["christmas break", null],
     ["pre-christmas", null],
