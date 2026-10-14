@@ -5,6 +5,7 @@ const { scrapeTextFromUrl } = require('./utils/webScraper');
 const { extractTextFromPdfBuffer, parseBase64ToBuffer } = require('./utils/pdfExtractor');
 const { callUnifiedLLM, parseLLMJson } = require('./utils/llmWrapper');
 const { validatePlan } = require('./utils/planValidator');
+const { getCanadianHolidays } = require('./utils/canadianCalendarHelper');
 
 const app = express();
 const PORT = process.env.PORT || 5005;
@@ -143,6 +144,7 @@ app.post('/generate-yearly-plan', async (req, res) => {
     const stateNormalized = (state || '').toLowerCase();
     const isCanada = countryNormalized.includes('canada') || countryNormalized === 'ca' || 
       ['ontario', 'on', 'quebec', 'qc', 'alberta', 'ab', 'british columbia', 'bc', 'manitoba', 'mb', 'saskatchewan', 'sk', 'nova scotia', 'ns'].includes(stateNormalized);
+    const canadianHolidays = isCanada ? getCanadianHolidays(Number(year) || 2026) : null;
 
     const systemPrompt = `You are an expert marketing planner for a commercial trampoline and active entertainment park. Output ONLY a valid JSON object representing a yearly marketing plan. The JSON must match this structure exactly, with no markdown or extra text:
 {
@@ -169,17 +171,17 @@ CRITICAL RULES FOR CALENDAR ENTRIES:
 Context: Timezone is ${timezone} and currency is ${currency}. Website: ${website || 'N/A'}.
 
 LOCATION & HOLIDAY DIRECTIVES:
-${isCanada ? `This park is located in CANADA (${state}).
-- CANADIAN STATUTORY & PROVINCIAL HOLIDAYS: Strictly use real Canadian holidays:
+${isCanada && canadianHolidays ? `This park is located in CANADA (${state}).
+- CANADIAN STATUTORY & PROVINCIAL HOLIDAYS: Strictly use real Canadian holidays on their exact statutory dates:
   * New Year's Day (${year}-01-01)
-  * Family Day (Third Monday of February in Ontario - huge family jump day!)
-  * Good Friday and Easter Monday (Easter weekend in March/April)
-  * Victoria Day (The Monday before May 25)
+  * Family Day (${canadianHolidays.familyDay} - huge family jump day!)
+  * Good Friday (${canadianHolidays.goodFriday}) and Easter Monday (${canadianHolidays.easterMonday})
+  * Victoria Day (${canadianHolidays.victoriaDay} - the Monday before May 25)
   * Canada Day (${year}-07-01 - Red & White Jump Fest)
-  * Civic Holiday / Simcoe Day (First Monday of August)
-  * Labour Day (First Monday of September)
+  * Civic Holiday / Simcoe Day (${canadianHolidays.civicHoliday} - First Monday of August)
+  * Labour Day (${canadianHolidays.labourDay} - First Monday of September)
   * National Day for Truth and Reconciliation (${year}-09-30)
-  * Canadian Thanksgiving (Second Monday of October - CRITICAL: NOT November US Thanksgiving!)
+  * Canadian Thanksgiving (${canadianHolidays.thanksgiving} - Second Monday of October - CRITICAL: NOT November US Thanksgiving!)
   * Remembrance Day (${year}-11-11)
   * Christmas Eve (${year}-12-24) & Christmas Day (${year}-12-25) [Closed or reduced hours]
   * Boxing Day (${year}-12-26 - Big retail/jump deal day)

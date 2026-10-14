@@ -17,12 +17,42 @@ async function callUnifiedLLM(apiKey, systemPrompt, userPrompt, images = []) {
   } else if (apiKey.startsWith("gsk_")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", images);
   } else if (apiKey.startsWith("sk-or-v1-")) {
-    return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://openrouter.ai/api/v1/chat/completions", "google/gemini-2.0-flash-exp:free", images);
+    return callOpenRouter(apiKey, systemPrompt, userPrompt, images);
   } else if (apiKey.startsWith("sk-") || apiKey.startsWith("sk-proj-")) {
     return callOpenAICompatible(apiKey, systemPrompt, userPrompt, "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", images);
   } else {
     throw new Error("Unrecognized API key format. Cannot determine LLM provider.");
   }
+}
+
+async function callOpenRouter(apiKey, systemPrompt, userPrompt, images = []) {
+  const customModel = process.env.OPENROUTER_MODEL;
+  const modelsToTry = [
+    ...(customModel ? [customModel] : []),
+    "nvidia/nemotron-3.5-lightning:free",
+    "openrouter/free",
+    "liquid/lfm-2.5-2.6b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+  ];
+
+  let lastError = null;
+  for (const model of modelsToTry) {
+    try {
+      return await callOpenAICompatible(
+        apiKey,
+        systemPrompt,
+        userPrompt,
+        "https://openrouter.ai/api/v1/chat/completions",
+        model,
+        images
+      );
+    } catch (err) {
+      lastError = err;
+      console.warn(`OpenRouter model ${model} failed: ${err.message}. Trying next fallback model...`);
+    }
+  }
+
+  throw lastError;
 }
 
 async function callAnthropic(apiKey, systemPrompt, userPrompt, images = []) {
@@ -94,12 +124,16 @@ async function callOpenAICompatible(apiKey, systemPrompt, userPrompt, baseUrl, m
 }
 
 async function callGemini(apiKey, systemPrompt, userPrompt, images = []) {
+  const customModel = process.env.GEMINI_MODEL;
   const modelsToTry = [
-    "gemini-1.5-flash",
-    "gemini-2.0-flash",
+    ...(customModel ? [customModel] : []),
     "gemini-2.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-2.0-flash-exp"
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
   ];
   let lastError = null;
 
@@ -142,7 +176,8 @@ async function callGemini(apiKey, systemPrompt, userPrompt, images = []) {
  * Extracts and cleans JSON from the raw LLM output text.
  */
 function parseLLMJson(rawText) {
-  let cleaned = rawText.trim();
+  if (!rawText) throw new Error("Empty or null response received from LLM");
+  let cleaned = String(rawText).trim();
   
   // Extract JSON block in case LLM added conversational text
   const jsonMatch = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
